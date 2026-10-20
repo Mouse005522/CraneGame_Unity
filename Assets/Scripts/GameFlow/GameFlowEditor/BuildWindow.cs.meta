@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 05a0a455bb731404ebcc3465eda21f20
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - m_ViewDataDictionary: {instanceID: 0}
+  - gameScene: {fileID: 102900000, guid: 61f237526399d264c8b4090091a3cba9, type: 3}
+  - testIotScene: {fileID: 102900000, guid: 85841e0064b2edc4f9cb7ef8e1dfce93, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
