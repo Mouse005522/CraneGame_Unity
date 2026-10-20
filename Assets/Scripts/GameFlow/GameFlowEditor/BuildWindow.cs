@@ -274,35 +274,6 @@ namespace Kun.Tool
             }
         }
 
-        static void BuildTestIot (SceneAsset scene)
-        {
-            string baseFolder = PickBuildFolder ("選擇測試 IOT 輸出資料夾");
-
-            if (string.IsNullOrEmpty (baseFolder))
-            {
-                Debug.LogWarning ("取消輸出");
-                return;
-            }
-
-            string timestampFolder = Path.Combine (baseFolder, GetTimestampFolderName ());
-            string scenePath = AssetDatabase.GetAssetPath (scene);
-            string exeName = $"{Application.productName}_TestIOT.exe";
-            string outputPath = Path.Combine (timestampFolder, exeName);
-
-            BuildPlayerOptions options = new BuildPlayerOptions
-            {
-                scenes = new[] { scenePath },
-                locationPathName = outputPath,
-                target = BuildTarget.StandaloneWindows64,
-                subtarget = (int)StandaloneBuildSubtarget.Player,
-                options = BuildOptions.ShowBuiltPlayer,
-            };
-
-            BuildReport report = BuildPipeline.BuildPlayer (options);
-
-            Debug.Log ($"[TestIOT] 輸出結果：{report.summary.result}，路徑：{outputPath}");
-        }
-
         static void ExecuteGameBuild (EntryType targetEntryType, string buildFolder, bool isDebug, SceneAsset scene)
         {
             // --- 記錄原有狀態 ---

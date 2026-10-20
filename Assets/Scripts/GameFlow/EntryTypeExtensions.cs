@@ -10,9 +10,19 @@ namespace Kun.Tool
             return entryType == EntryType.Server;
         }
 
+        public static bool IsPcPlayerBuild (this EntryType entryType)
+        {
+            return entryType == EntryType.Host;
+        }
+
+        static bool IsStandaloneWindowsBuild (this EntryType entryType)
+        {
+            return entryType.IsServerBuild () || entryType.IsPcPlayerBuild ();
+        }
+
         public static BuildTarget GetBuildTarget (this EntryType entryType)
         {
-            return entryType.IsServerBuild ()
+            return entryType.IsStandaloneWindowsBuild ()
                 ? BuildTarget.StandaloneWindows64
                 : BuildTarget.WebGL;
         }
@@ -26,21 +36,27 @@ namespace Kun.Tool
 
         public static string GetBuildProfileName (this EntryType entryType)
         {
-            return entryType.IsServerBuild ()
-                ? "PC ServerBuild"
-                : "WebBuild";
+            return entryType switch
+            {
+                EntryType.Server => "PC ServerBuild",
+                EntryType.Host => "PC PlayerBuild",
+                _ => "WebBuild",
+            };
         }
 
         public static string GetBuildOutputName (this EntryType entryType, string productName)
         {
-            return entryType.IsServerBuild ()
-                ? $"{productName}_Server_PC"
-                : $"{productName}_Client_WebGL";
+            return entryType switch
+            {
+                EntryType.Server => $"{productName}_Server_PC",
+                EntryType.Host => $"{productName}_Host_PC",
+                _ => $"{productName}_Client_WebGL",
+            };
         }
 
         public static string GetBuildLocationPath (this EntryType entryType, string buildFolder, string outputName)
         {
-            return entryType.IsServerBuild ()
+            return entryType.IsStandaloneWindowsBuild ()
                 ? Path.Combine (buildFolder, $"{outputName}.exe")
                 : Path.Combine (buildFolder, outputName);
         }
