@@ -1,0 +1,63 @@
+# unity ignore dir
+/[Bb]in/
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/ 
+/UserSettings/
+
+/[Ll]ogs/
+# unity ignore file
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.userprefs
+*.meta
+*.tmp
+*.editorconfig
+ 
+# need include the meta of file
+!*.*.meta
+
+# Visual Studio temp something
+.vs/
+.vsconfig
+
+#temporarily resources
+Assets/temporarily
+
+*.tmp
+
+# Word temporary
+~$*.doc*
+
+# Word Auto Backup File
+Backup of *.doc*
+
+# Excel temporary
+~$*.xls*
+
+# Excel Backup File
+*.xlk
+
+# PowerPoint temporary
+~$*.ppt*
+
+# Visio autosave temporary files
+*.~vsd*
+
+# CI files
+/CI/
+
+#fmod
+/Assets/FMODStudioCache.asset
+/Assets/FMODStudioCache.asset.meta
+fmod.log
+fmod_editor.log
+
+#A star
+/Packages/com.arongranberg.astar/ExampleScenes~
+/Packages/com.arongranberg.astar/ExampleScenes~.meta
+
+#Unit
+/Assets/Test*
