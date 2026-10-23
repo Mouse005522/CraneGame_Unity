@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
 using Kun.Tool;
+using Kun.CraneGame;
 
 namespace Kun.Tool
 {
@@ -54,18 +55,12 @@ namespace Kun.Tool
 
             var entryType = envirSetting.entryType;
 
-            if (entryType == EntryType.Host) 
-            {
-                // 如果是 Host 模式，則使用本地 IP
-                envirSetting.serverIp = "127.0.0.1";
-            }
-
             if (entryType.HasFlag (EntryType.Server)) 
             {
                 Debug.Log ($"啟動 Server 模式");
                 var server = gameObject.AddComponent<GameServer> ();
                 gameBases.Add (server);
-                await server.Setup (rootServices, envirSetting.serverIp, envirSetting.serverPort);
+                await server.Setup (rootServices);
                 if (this == null)
                     return;
             }
@@ -75,7 +70,7 @@ namespace Kun.Tool
                 Debug.Log ($"啟動 Client 模式");
                 var client = gameObject.AddComponent<GameClient> ();
                 gameBases.Add (client);
-                await client.Setup (rootServices, envirSetting.serverIp, envirSetting.serverPort);
+                await client.Setup (rootServices);
             }
         }
 

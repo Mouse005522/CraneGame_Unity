@@ -1,5 +1,4 @@
-﻿using System;
-using UnityEngine;
+using System;
 
 namespace Kun.Tool 
 {
@@ -8,9 +7,6 @@ namespace Kun.Tool
     {
         public EntryType entryType;
         public bool DisplayDebugGUI;
-
-        public string serverIp = "127.0.0.1";
-        public int serverPort = 8088;
     }
 
     public enum EntryType

@@ -1,28 +1,26 @@
-using System;
+﻿using System;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
+using Kun.Tool;
 
-namespace Kun.Tool
+namespace Kun.CraneGame
 {
     public abstract class GameBase : MonoBehaviour
     {
         public ServiceCollection Services { get; private set; }
 
         [EasyInjectBinding]
-        public SettingParser Settings { get; private set; }
+        public SettingParser SettingParser { get; private set; }
 
         bool initialized;
         bool closed;
-
-        protected string serverIp;
-        protected int serverPort;
 
         protected abstract string SettingScopeName { get; }
 
         /// <summary>
         /// 建立端點專屬 scope，再統一執行註冊、注入與兩階段初始化。
         /// </summary>
-        public async UniTask Setup (ServiceCollection rootServices, string serverIp, int serverPort)
+        public async UniTask Setup (ServiceCollection rootServices)
         {
             if (closed || Services != null)
             {
@@ -44,9 +42,6 @@ namespace Kun.Tool
             Services.SetRoot (transform);
             Services.RemoveService<SettingParser> ();
             Services.AddService (parser);
-
-            this.serverIp = serverIp;
-            this.serverPort = serverPort;
 
             try
             {

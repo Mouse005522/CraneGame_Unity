@@ -1,7 +1,7 @@
 ﻿using System;
-using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
@@ -18,9 +18,6 @@ namespace Kun.Tool
 
     public class BuildWindow : EditorWindow
     {
-        [SerializeField]
-        SceneAsset gameScene;
-
         const string CacheKey = "BuildWindowCache";
         const string LastBuildFolderKey = "BuildWindow_LastBuildFolder";
 
@@ -89,13 +86,6 @@ namespace Kun.Tool
                 windowCache.SetModify ();
             }
 
-            GUILayout.Space (5f);
-
-            // 場景指定（直接用 SerializeField 欄位，透過 SerializedObject 繪製）
-            var so = new SerializedObject (this);
-            so.Update ();
-            EditorGUILayout.PropertyField (so.FindProperty ("gameScene"), new GUIContent ("遊戲場景"));
-            so.ApplyModifiedProperties ();
         }
 
         // -------------------------------------------------------
@@ -124,11 +114,9 @@ namespace Kun.Tool
 
             GUILayout.Space (5f);
 
-            GUI.enabled = gameScene != null;
-
             if (GUILayout.Button ("開始輸出", GUILayout.Height (35f)))
             {
-                Build (cache.singleEntryType, cache.isDebug, gameScene);
+                Build (cache.singleEntryType, cache.isDebug);
             }
 
             GUI.enabled = true;
@@ -207,11 +195,11 @@ namespace Kun.Tool
 
             GUILayout.Space (5f);
 
-            GUI.enabled = list.Count > 0 && gameScene != null;
+            GUI.enabled = list.Count > 0;
 
             if (GUILayout.Button ($"全部輸出（共 {list.Count} 個）", GUILayout.Height (35f)))
             {
-                BuildBatch (list, windowCache.CurrentValue.isDebug, gameScene);
+                BuildBatch (list, windowCache.CurrentValue.isDebug);
             }
 
             GUI.enabled = true;
@@ -221,7 +209,7 @@ namespace Kun.Tool
         // Build
         // -------------------------------------------------------
 
-        static void Build (EntryType targetEntryType, bool isDebug, SceneAsset scene)
+        static void Build (EntryType targetEntryType, bool isDebug)
         {
             string baseFolder = PickBuildFolder ("選擇輸出資料夾");
 
@@ -232,10 +220,10 @@ namespace Kun.Tool
             }
 
             string timestampFolder = Path.Combine (baseFolder, GetTimestampFolderName ());
-            ExecuteGameBuild (targetEntryType, timestampFolder, isDebug, scene);
+            ExecuteGameBuild (targetEntryType, timestampFolder, isDebug);
         }
 
-        static void BuildBatch (List<EntryType> entryTypes, bool isDebug, SceneAsset scene)
+        static void BuildBatch (List<EntryType> entryTypes, bool isDebug)
         {
             string baseFolder = PickBuildFolder ("選擇組合輸出根目錄");
 
@@ -263,7 +251,7 @@ namespace Kun.Tool
                     string entryFolder = Path.Combine (timestampFolder, entryType.ToString ());
 
                     Debug.Log ($"[{i + 1}/{entryTypes.Count}] 開始輸出 {entryType}...");
-                    ExecuteGameBuild (entryType, entryFolder, isDebug, scene);
+                    ExecuteGameBuild (entryType, entryFolder, isDebug);
                 }
 
                 Debug.Log ("組合輸出完成");
@@ -274,15 +262,19 @@ namespace Kun.Tool
             }
         }
 
-        static void ExecuteGameBuild (EntryType targetEntryType, string buildFolder, bool isDebug, SceneAsset scene)
+        static void ExecuteGameBuild (EntryType targetEntryType, string buildFolder, bool isDebug)
         {
             // --- 記錄原有狀態 ---
             EnvirSetting envirSetting = GameSettingScopes.Root.LoadJson<EnvirSetting> ();
             EntryType originalEntryType = envirSetting.entryType;
             bool displayDebugGUI = envirSetting.DisplayDebugGUI;
+            string excludedFolder = null;
+            string backupFolder = null;
 
             try
             {
+                MoveExcludedSettingsOutsideAssets (targetEntryType, out excludedFolder, out backupFolder);
+
                 // --- 套用輸出前設定 ---
                 envirSetting.entryType = targetEntryType;
                 envirSetting.DisplayDebugGUI = isDebug;
@@ -291,7 +283,10 @@ namespace Kun.Tool
 
                 string outputName = targetEntryType.GetBuildOutputName (Application.productName);
                 string outputPath = targetEntryType.GetBuildLocationPath (buildFolder, outputName);
-                string scenePath = AssetDatabase.GetAssetPath (scene);
+                string[] scenePaths = EditorBuildSettings.scenes
+                    .Where (scene => scene.enabled)
+                    .Select (scene => scene.path)
+                    .ToArray ();
                 BuildTarget target = targetEntryType.GetBuildTarget ();
                 int subtarget = targetEntryType.GetBuildSubtarget ();
 
@@ -299,7 +294,7 @@ namespace Kun.Tool
 
                 BuildPlayerOptions options = new BuildPlayerOptions
                 {
-                    scenes = new[] { scenePath },
+                    scenes = scenePaths,
                     locationPathName = outputPath,
                     target = target,
                     subtarget = subtarget,
@@ -312,18 +307,82 @@ namespace Kun.Tool
             }
             finally
             {
-                // --- 還原原有狀態 ---
-                envirSetting.entryType = originalEntryType;
-                envirSetting.DisplayDebugGUI = displayDebugGUI;
-                GameSettingScopes.Root.SaveJson (envirSetting);
+                try
+                {
+                    RestoreExcludedSettings (excludedFolder, backupFolder);
+                }
+                finally
+                {
+                    // --- 還原原有狀態 ---
+                    envirSetting.entryType = originalEntryType;
+                    envirSetting.DisplayDebugGUI = displayDebugGUI;
+                    GameSettingScopes.Root.SaveJson (envirSetting);
 
-                Debug.Log ($"已還原 entryType = {originalEntryType}");
+                    Debug.Log ($"已還原 entryType = {originalEntryType}");
+                }
             }
         }
 
         // -------------------------------------------------------
         // Helpers
         // -------------------------------------------------------
+
+        /// <summary>
+        /// 將另一端的設定資料夾與 .meta 暫時移至 Assets 外，避免打包。
+        /// </summary>
+        static void MoveExcludedSettingsOutsideAssets (EntryType targetEntryType, out string excludedFolder, out string backupFolder)
+        {
+            // 透過 out 保留移動途中發生例外時的復原路徑。
+            excludedFolder = null;
+            backupFolder = null;
+            string excludedSetting = targetEntryType == EntryType.Server ? GameSettingScopes.ClientScopeName
+                : targetEntryType == EntryType.Client ? GameSettingScopes.ServerScopeName : null;
+
+            if (excludedSetting != null)
+            {
+                excludedFolder = targetEntryType == EntryType.Server
+                    ? GameSettingScopes.ClientFolderPath
+                    : GameSettingScopes.ServerFolderPath;
+
+                if (Directory.Exists (excludedFolder))
+                {
+                    // 暫存在 Assets 外，避免被打包；與專案同磁碟以便直接移動。
+                    string backupRoot = Path.Combine (Application.dataPath, "..", "Library", "BuildWindowSettings", Guid.NewGuid ().ToString ("N"));
+                    Directory.CreateDirectory (backupRoot);
+                    backupFolder = Path.Combine (backupRoot, excludedSetting);
+                    Directory.Move (excludedFolder, backupFolder);
+
+                    if (File.Exists (excludedFolder + ".meta"))
+                    {
+                        File.Move (excludedFolder + ".meta", backupFolder + ".meta");
+                    }
+
+                    AssetDatabase.Refresh ();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 復原暫時移出的設定資料夾與 .meta，並移除空的暫存目錄。
+        /// </summary>
+        static void RestoreExcludedSettings (string excludedFolder, string backupFolder)
+        {
+            if (backupFolder != null)
+            {
+                if (Directory.Exists (backupFolder))
+                {
+                    Directory.Move (backupFolder, excludedFolder);
+                }
+
+                if (File.Exists (backupFolder + ".meta"))
+                {
+                    File.Move (backupFolder + ".meta", excludedFolder + ".meta");
+                }
+
+                Directory.Delete (Path.GetDirectoryName (backupFolder));
+                AssetDatabase.Refresh ();
+            }
+        }
 
         /// <summary>
         /// 開啟資料夾選擇面板，自動帶入上次路徑並將結果緩存至 EditorPrefs

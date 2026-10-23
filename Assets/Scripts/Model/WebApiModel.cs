@@ -74,15 +74,15 @@ namespace CraneGameServer.WebApi
 
         /// <returns>OK</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public virtual System.Threading.Tasks.Task<ServerJoinRoomResponse> JoinRoomAsync(string sDP)
+        public virtual System.Threading.Tasks.Task<ServerJoinRoomResponse> JoinRoomAsync(ClientJoinRoomRequest body)
         {
-            return JoinRoomAsync(sDP, System.Threading.CancellationToken.None);
+            return JoinRoomAsync(body, System.Threading.CancellationToken.None);
         }
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <returns>OK</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<ServerJoinRoomResponse> JoinRoomAsync(string sDP, System.Threading.CancellationToken cancellationToken)
+        public virtual async System.Threading.Tasks.Task<ServerJoinRoomResponse> JoinRoomAsync(ClientJoinRoomRequest body, System.Threading.CancellationToken cancellationToken)
         {
             var client_ = _httpClient;
             var disposeClient_ = false;
@@ -90,7 +90,10 @@ namespace CraneGameServer.WebApi
             {
                 using (var request_ = new System.Net.Http.HttpRequestMessage())
                 {
-                    request_.Content = new System.Net.Http.StringContent(string.Empty, System.Text.Encoding.UTF8, "application/json");
+                    var json_ = Newtonsoft.Json.JsonConvert.SerializeObject(body, JsonSerializerSettings);
+                    var content_ = new System.Net.Http.StringContent(json_);
+                    content_.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/json");
+                    request_.Content = content_;
                     request_.Method = new System.Net.Http.HttpMethod("POST");
                     request_.Headers.Accept.Add(System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
 
@@ -98,12 +101,6 @@ namespace CraneGameServer.WebApi
                     if (!string.IsNullOrEmpty(_baseUrl)) urlBuilder_.Append(_baseUrl);
                     // Operation Path: "api/Room/JoinRoom"
                     urlBuilder_.Append("api/Room/JoinRoom");
-                    urlBuilder_.Append('?');
-                    if (sDP != null)
-                    {
-                        urlBuilder_.Append(System.Uri.EscapeDataString("SDP")).Append('=').Append(System.Uri.EscapeDataString(ConvertToString(sDP, System.Globalization.CultureInfo.InvariantCulture))).Append('&');
-                    }
-                    urlBuilder_.Length--;
 
                     PrepareRequest(client_, request_, urlBuilder_);
 
@@ -287,6 +284,15 @@ namespace CraneGameServer.WebApi
             var result = System.Convert.ToString(value, cultureInfo);
             return result == null ? "" : result;
         }
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ClientJoinRoomRequest
+    {
+
+        [Newtonsoft.Json.JsonProperty("sdp", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string Sdp { get; set; }
+
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]

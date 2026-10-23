@@ -7,12 +7,18 @@ namespace Kun.Tool
     /// </summary>
     public static class GameSettingScopes
     {
-        const string GameSettingFolderName = "GameSettings";
+        public const string GameSettingFolderName = "GameSettings";
+        public const string ServerScopeName = "Server";
+        public const string ClientScopeName = "Client";
+
+        public static string RootFolderPath => $"{Application.streamingAssetsPath}/{GameSettingFolderName}";
+        public static string ServerFolderPath => Server.FolderPath;
+        public static string ClientFolderPath => Client.FolderPath;
 
         public static SettingParser Root { get; } = new SettingParser (
-            $"{Application.streamingAssetsPath}/{GameSettingFolderName}");
+            RootFolderPath);
 
-        public static SettingParser Server { get; } = Root.CreateChild ("Server");
-        public static SettingParser Client { get; } = Root.CreateChild ("Client");
+        public static SettingParser Server { get; } = Root.CreateChild (ServerScopeName);
+        public static SettingParser Client { get; } = Root.CreateChild (ClientScopeName);
     }
 }

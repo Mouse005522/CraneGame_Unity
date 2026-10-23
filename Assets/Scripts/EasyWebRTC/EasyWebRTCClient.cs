@@ -1,138 +1,119 @@
 ﻿using System;
-using System.IO;
-using System.Net;
+using System.Net.Http;
 using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using Unity.WebRTC;
 using Cysharp.Threading.Tasks;
-using UnityEngine.Networking;
+using CraneGameServer.WebApi;
 
 namespace Kun.Tool
 {
     public class EasyWebRTCClient : EasyWebRTCBase
     {
-        private RTCPeerConnection peerConnection;
-        private RTCDataChannel dataChannel;
+        RTCPeerConnection peerConnection;
+        RTCDataChannel dataChannel;
+        HttpClient httpClient;
+        RoomClient roomClient;
 
-        public override void Setup (string ip, int port)
+        public void Setup (string ip, float iceGatheringTimeoutSeconds = 3f)
         {
-            base.Setup (ip, port);
+            if (string.IsNullOrWhiteSpace (ip))
+                throw new ArgumentException ("Room API 位址不可為空。", nameof (ip));
 
-            StartCoroutine (WebRTC.Update ());
+            string baseUrl = ip.Contains ("://") ? ip : $"http://{ip}";
+            if (!Uri.TryCreate (baseUrl, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
+                string.IsNullOrEmpty (uri.Host))
+                throw new ArgumentException ("Room API 位址必須是 IP、主機名稱或 HTTP(S) URL。", nameof (ip));
+
+            base.Setup (iceGatheringTimeoutSeconds);
+            httpClient = new HttpClient ();
+            roomClient = new RoomClient (uri.AbsoluteUri, httpClient);
             ConnectToTargetServer ().Forget ();
         }
 
-        private async UniTaskVoid ConnectToTargetServer ()
+        async UniTask ConnectToTargetServer ()
         {
-            RTCConfiguration config = EasyWebRTCUtility.GetRTCConfiguration ();
-
-            peerConnection = new RTCPeerConnection (ref config);
-
-            peerConnection.OnConnectionStateChange = state =>
+            try
             {
-                Debug.Log ($"[Client] PeerConnection 狀態變更: {state}");
-            };
+                RTCConfiguration config = EasyWebRTCUtility.GetRTCConfiguration ();
+                peerConnection = new RTCPeerConnection (ref config);
+                peerConnection.OnConnectionStateChange = state =>
+                    Debug.Log ($"[Client] PeerConnection 狀態變更: {state}");
 
-            // 建立 RUDP DataChannel
-            var channelInit = new RTCDataChannelInit ();
-            dataChannel = peerConnection.CreateDataChannel ("rudp-channel", channelInit);
-
-            dataChannel.OnOpen = () =>
-            {
-                Debug.Log ($"[Client] 🎉 RUDP 通道已成功開啟！狀態: {dataChannel.ReadyState}");
-                byte[] msg = Encoding.UTF8.GetBytes ("Hello from Client!");
-                dataChannel.Send (msg);
-            };
-
-            dataChannel.OnMessage = bytes =>
-            {
-                string reply = Encoding.UTF8.GetString (bytes);
-                Debug.Log ($"[Client 收到回應]: {reply}");
-            };
-
-            dataChannel.OnClose = () =>
-            {
-                Debug.Log ($"[Client] RUDP 通道已關閉");
-            };
-
-            // 建立 Offer
-            var offerOp = peerConnection.CreateOffer ();
-            await UniTask.WaitUntil (() => offerOp.IsDone);
-
-            if (offerOp.IsError)
-            {
-                Debug.LogError ("[Client] 建立 Offer 失敗");
-                return;
-            }
-
-            var offerDesc = offerOp.Desc;
-            var setLocalOp = peerConnection.SetLocalDescription (ref offerDesc);
-            await UniTask.WaitUntil (() => setLocalOp.IsDone);
-
-            // 等待 ICE 收集完成（因為是連 AWS 固定的 IP，本地直連通常瞬間完成）
-            float timer = 0f;
-            while (peerConnection.GatheringState != RTCIceGatheringState.Complete)
-            {
-                timer += Time.deltaTime;
-                if (timer > 3f) break;
-                await UniTask.Yield ();
-            }
-
-            offerDesc = peerConnection.LocalDescription;
-
-            // 透過 HTTP POST 將 Offer SDP 傳送給 AWS Server
-            string serverUrl = $"http://{Ip}:{Port}{SDP_OFFER_PATH}/";
-            using (UnityWebRequest www = new UnityWebRequest (serverUrl, UnityWebRequest.kHttpVerbPOST))
-            {
-                byte[] bodyRaw = Encoding.UTF8.GetBytes (offerDesc.sdp);
-                www.uploadHandler = new UploadHandlerRaw (bodyRaw);
-                www.downloadHandler = new DownloadHandlerBuffer ();
-                www.SetRequestHeader ("Content-Type", "text/plain");
-
-                await www.SendWebRequest ();
-
-                if (www.result == UnityWebRequest.Result.Success)
+                dataChannel = peerConnection.CreateDataChannel ("rudp-channel", new RTCDataChannelInit ());
+                dataChannel.OnOpen = () =>
                 {
-                    string answerSdp = www.downloadHandler.text;
-                    var answerDesc = new RTCSessionDescription { type = RTCSdpType.Answer, sdp = answerSdp };
+                    Debug.Log ("[Client] RUDP 資料通道已開啟！");
+                    dataChannel.Send (Encoding.UTF8.GetBytes ("Hello from Client!"));
+                };
+                dataChannel.OnMessage = bytes => Debug.Log ($"[Client 收到回應]: {Encoding.UTF8.GetString (bytes)}");
+                dataChannel.OnClose = () => Debug.Log ("[Client] RUDP 通道已關閉");
 
-                    var setRemoteOp = peerConnection.SetRemoteDescription (ref answerDesc);
-                    await UniTask.WaitUntil (() => setRemoteOp.IsDone);
+                var offerOp = peerConnection.CreateOffer ();
+                await UniTask.WaitUntil (() => offerOp.IsDone);
+                if (offerOp.IsError)
+                    throw new InvalidOperationException ($"建立 Offer 失敗: {offerOp.Error.message}");
 
-                    Debug.Log ("[Client] 已成功與 Server 完成交握！");
-                }
-                else
+                var offerDesc = offerOp.Desc;
+                var setLocalOp = peerConnection.SetLocalDescription (ref offerDesc);
+                await UniTask.WaitUntil (() => setLocalOp.IsDone);
+                if (setLocalOp.IsError)
+                    throw new InvalidOperationException ($"設定本地 SDP 失敗: {setLocalOp.Error.message}");
+
+                // 單次 SDP 交換，需先收齊 ICE candidates。
+                await WaitForIceGathering (peerConnection);
+                var clientJoinRequest = new ClientJoinRoomRequest (peerConnection.LocalDescription.sdp);
+                ServerJoinRoomResponse response = await roomClient.JoinRoomWithDiagnosticsAsync (clientJoinRequest);
+                await UniTask.SwitchToMainThread ();
+                if (IsClosed)
+                    return;
+                if (response == null || !response.IsSuccess || string.IsNullOrWhiteSpace (response.Answer))
+                    throw new InvalidOperationException ("Room API 加入房間失敗，或未回傳 Answer SDP。");
+
+                var answerDesc = new RTCSessionDescription { type = RTCSdpType.Answer, sdp = response.Answer };
+                var setRemoteOp = peerConnection.SetRemoteDescription (ref answerDesc);
+                await UniTask.WaitUntil (() => setRemoteOp.IsDone);
+                if (setRemoteOp.IsError)
+                    throw new InvalidOperationException ($"設定遠端 SDP 失敗: {setRemoteOp.Error.message}");
+
+                Debug.Log ("[Client] Room API 的 Answer SDP 已套用，等待 ICE 建立連線。");
+            }
+            catch (Exception ex)
+            {
+                await UniTask.SwitchToMainThread ();
+                if (!IsClosed)
                 {
-                    Debug.LogError ($"[Client] 無法連線至 Server: {www.error}");
+                    Debug.LogError (RoomClient.FormatRequestException (ex), this);
+                    Close ();
                 }
             }
         }
 
         void Update ()
         {
-            // 按下空白鍵發送測試 RUDP 訊息
             if (Input.GetKeyDown (KeyCode.Space) && dataChannel != null && dataChannel.ReadyState == RTCDataChannelState.Open)
             {
-                byte[] msg = Encoding.UTF8.GetBytes ("Space pressed from Client!");
-                unsafe
-                {
-                    var span = msg.AsSpan ();
-                    fixed (byte* ptr = span)
-                    {
-                        dataChannel.Send (ptr, span.Length);
-                    }
-                }
+                dataChannel.Send (Encoding.UTF8.GetBytes ("Space pressed from Client!"));
                 Debug.Log ("[Client] 已發送 RUDP 訊息");
             }
         }
 
         public override void Close ()
         {
-            base.Close ();
+            if (IsClosed)
+                return;
 
+            base.Close ();
             dataChannel?.Close ();
+            dataChannel?.Dispose ();
+            dataChannel = null;
             peerConnection?.Close ();
+            peerConnection?.Dispose ();
+            peerConnection = null;
+            httpClient?.Dispose ();
+            httpClient = null;
+            roomClient = null;
         }
     }
 }

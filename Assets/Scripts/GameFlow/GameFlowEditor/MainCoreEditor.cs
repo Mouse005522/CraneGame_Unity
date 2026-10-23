@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,6 +9,8 @@ namespace Kun.Tool
     public class MainCoreEditor : SerializedObjectEditor<MainCore>
     {
         EnvirSetting envirSetting;
+        ClientSetting clientSetting;
+        ServerSetting serverSetting;
 
         const string FoldoutKeyPrefix = "MainCoreEditor_Foldout_";
 
@@ -30,22 +32,32 @@ namespace Kun.Tool
 
             GUILayout.Space (10f);
 
-            GUILayout.Label ("連線port");
-
-            int newPort = EditorGUILayout.IntField (envirSetting.serverPort, GUILayout.Width (300f));
-            envirSetting.serverPort = newPort;
-
             if (envirSetting.entryType.HasFlag (EntryType.Client))
             {
-                // 只有在非 Play Mode 時才能修改 VR 設定
-                GUI.enabled = !Application.isPlaying;
+                if (clientSetting == null)
+                    clientSetting = GameSettingScopes.Client.LoadJson<ClientSetting> ();
 
-                GUILayout.Label ("連線ip");
+                using (new EditorGUI.DisabledScope (Application.isPlaying))
+                {
+                    GUILayout.Label ("Client 設定");
+                    clientSetting.roomServerIp = EditorGUILayout.TextField ("Room API 位址", clientSetting.roomServerIp);
+                    clientSetting.iceGatheringTimeoutSeconds = EditorGUILayout.FloatField ("ICE 收集逾時（秒）", clientSetting.iceGatheringTimeoutSeconds);
+                }
+            }
 
-                string newIp = EditorGUILayout.TextField (envirSetting.serverIp, GUILayout.Width (300f));
-                envirSetting.serverIp = newIp;
+            if (envirSetting.entryType.HasFlag (EntryType.Server))
+            {
+                if (serverSetting == null)
+                    serverSetting = GameSettingScopes.Server.LoadJson<ServerSetting> ();
 
-                GUI.enabled = true;
+                using (new EditorGUI.DisabledScope (Application.isPlaying))
+                {
+                    GUILayout.Label ("Server 設定");
+                    serverSetting.gameServerPipleName = EditorGUILayout.TextField ("Game Server Pipe 名稱", serverSetting.gameServerPipleName);
+                    serverSetting.apiServerPipleName = EditorGUILayout.TextField ("API Server Pipe 名稱", serverSetting.apiServerPipleName);
+                    serverSetting.TimeoutSeconds = EditorGUILayout.FloatField ("Pipe 傳送逾時（秒）", serverSetting.TimeoutSeconds);
+                    serverSetting.iceGatheringTimeoutSeconds = EditorGUILayout.FloatField ("ICE 收集逾時（秒）", serverSetting.iceGatheringTimeoutSeconds);
+                }
             }
 
             GUILayout.Space (10f);
@@ -54,16 +66,15 @@ namespace Kun.Tool
             GUILayout.Label ("顯示偵錯資訊");
             displayDebugGUI = EditorGUILayout.Toggle ("Display", displayDebugGUI);
 
-            if (envirSetting.entryType.HasFlag (EntryType.Server))
-            {
-
-            }
-
             EditorGUI.EndChangeCheck ();
 
             if (GUI.changed)
             {
                 GameSettingScopes.Root.SaveJson (envirSetting);
+                if (clientSetting != null)
+                    GameSettingScopes.Client.SaveJson (clientSetting);
+                if (serverSetting != null)
+                    GameSettingScopes.Server.SaveJson (serverSetting);
                 PlayerPrefs.SetInt (MainCore.DisplayDebugGUIKey, displayDebugGUI ? 1 : 0);
             }
         }

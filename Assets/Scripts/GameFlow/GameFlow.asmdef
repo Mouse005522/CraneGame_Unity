@@ -2,6 +2,7 @@
     "name": "GameFlow",
     "rootNamespace": "",
     "references": [
+        "CraneGame.WebApi",
         "GUID:26f3c906881a7ad40a036e56c2852c2d",
         "GUID:f51ebe6a0ceec4240a699833d6309b23",
         "GUID:501d9dd73aeb7f548a401908804b1c9c"

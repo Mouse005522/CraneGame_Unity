@@ -1,23 +1,20 @@
-using System;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
+﻿using UnityEngine;
 using Cysharp.Threading.Tasks;
+using Kun.Tool;
 
-namespace Kun.Tool
+namespace Kun.CraneGame
 {
     public class GameClient : GameBase 
     {
         protected override string SettingScopeName => "Client";
 
-        protected override UniTask PrepareServices ()
+        protected override async UniTask PrepareServices ()
         {
-            webRTCClient = gameObject.AddComponent<EasyWebRTCClient> ();
-            webRTCClient.Setup (serverIp, serverPort);
+            var setting = await SettingParser.LoadJsonAsync<ClientSetting> ();
+            Services.AddService (setting);
 
-            return UniTask.CompletedTask;
+            webRTCClient = gameObject.AddComponent<EasyWebRTCClient> ();
+            webRTCClient.Setup (setting.roomServerIp, setting.iceGatheringTimeoutSeconds);
         }
 
         EasyWebRTCClient webRTCClient;
