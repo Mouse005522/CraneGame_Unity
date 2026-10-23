@@ -277,7 +277,7 @@ namespace Kun.Tool
         static void ExecuteGameBuild (EntryType targetEntryType, string buildFolder, bool isDebug, SceneAsset scene)
         {
             // --- 記錄原有狀態 ---
-            EnvirSetting envirSetting = SettingParser.LoadJson<EnvirSetting> ();
+            EnvirSetting envirSetting = GameSettingScopes.Root.LoadJson<EnvirSetting> ();
             EntryType originalEntryType = envirSetting.entryType;
             bool displayDebugGUI = envirSetting.DisplayDebugGUI;
 
@@ -287,7 +287,7 @@ namespace Kun.Tool
                 envirSetting.entryType = targetEntryType;
                 envirSetting.DisplayDebugGUI = isDebug;
 
-                SettingParser.SaveJson (envirSetting);
+                GameSettingScopes.Root.SaveJson (envirSetting);
 
                 string outputName = targetEntryType.GetBuildOutputName (Application.productName);
                 string outputPath = targetEntryType.GetBuildLocationPath (buildFolder, outputName);
@@ -315,7 +315,7 @@ namespace Kun.Tool
                 // --- 還原原有狀態 ---
                 envirSetting.entryType = originalEntryType;
                 envirSetting.DisplayDebugGUI = displayDebugGUI;
-                SettingParser.SaveJson (envirSetting);
+                GameSettingScopes.Root.SaveJson (envirSetting);
 
                 Debug.Log ($"已還原 entryType = {originalEntryType}");
             }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
@@ -6,11 +6,47 @@ using UnityEngine.Networking;
 
 namespace Kun.Tool
 {
-    public static class SettingParser
+    public sealed class SettingParser
     {
-        const string GameSettingFolderName = "GameSettings";
+        public string FolderPath { get; }
 
-        public static readonly string FolderPath = $"{Application.streamingAssetsPath}/{GameSettingFolderName}";
+        public SettingParser (string folderPath)
+        {
+            if (string.IsNullOrWhiteSpace (folderPath))
+            {
+                throw new ArgumentException ("設定目錄不可為空。", nameof (folderPath));
+            }
+
+            FolderPath = folderPath;
+        }
+
+        /// <summary>
+        /// 從目前目錄建立子 scope；不會修改目前 parser，也不會立即建立資料夾。
+        /// 每個參數代表一層資料夾，可繼續從回傳的 parser 衍生。
+        /// </summary>
+        public SettingParser CreateChild (params string[] subFolderNames)
+        {
+            if (subFolderNames == null || subFolderNames.Length == 0)
+            {
+                throw new ArgumentException ("至少需要一個子目錄名稱。", nameof (subFolderNames));
+            }
+
+            var folderPath = FolderPath;
+
+            foreach (var subFolderName in subFolderNames)
+            {
+                if (string.IsNullOrWhiteSpace (subFolderName) ||
+                    subFolderName == "." || subFolderName == ".." ||
+                    subFolderName.IndexOfAny (new[] { '/', '\\', ':' }) >= 0)
+                {
+                    throw new ArgumentException ("請傳入單層子目錄名稱。", nameof (subFolderNames));
+                }
+
+                folderPath = Path.Combine (folderPath, subFolderName);
+            }
+
+            return new SettingParser (folderPath);
+        }
 
         /// <summary>
         /// 若檔名與泛型名一樣 則直接套用
@@ -19,7 +55,7 @@ namespace Kun.Tool
         /// <returns>The loader.</returns>
         /// <param name="dataName">Data name.</param>
         /// <typeparam name="T">The 1st type parameter.</typeparam>
-        public static T LoadJson<T> (params string[] subFolderNames) where T : class, new()
+        public T LoadJson<T> (params string[] subFolderNames) where T : class, new()
         {
             return LoadJson<T> (out _, subFolderNames);
         }
@@ -31,7 +67,7 @@ namespace Kun.Tool
         /// <returns>The loader.</returns>
         /// <param name="dataName">Data name.</param>
         /// <typeparam name="T">The 1st type parameter.</typeparam>
-        public static T LoadJson<T> (out string rawJson ,params string[] subFolderNames) where T : class, new()
+        public T LoadJson<T> (out string rawJson ,params string[] subFolderNames) where T : class, new()
         {
             rawJson = "";
             Type type = typeof (T);
@@ -88,7 +124,7 @@ namespace Kun.Tool
         /// <returns>The loader.</returns>
         /// <param name="dataName">Data name.</param>
         /// <typeparam name="T">The 1st type parameter.</typeparam>
-        public static async UniTask<T> LoadJsonAsync<T> (params string[] subFolderNames) where T : class, new()
+        public async UniTask<T> LoadJsonAsync<T> (params string[] subFolderNames) where T : class, new()
         {
             Type type = typeof (T);
             string dataName = $"{type.Name}.json";
@@ -140,7 +176,7 @@ namespace Kun.Tool
             return process;
         }
 
-        public static void SaveJson (object obj, params string[] subFolderNames)
+        public void SaveJson (object obj, params string[] subFolderNames)
         {
             Type type = obj.GetType ();
             string dataName = $"{type.Name}.json";
@@ -155,6 +191,8 @@ namespace Kun.Tool
             var path = Path.Combine (folderPath, dataName);
 
             string json = JsonUtility.ToJson (obj, true);
+
+            Directory.CreateDirectory (folderPath);
 
             using (StreamWriter writer = new StreamWriter (path, false))
             {

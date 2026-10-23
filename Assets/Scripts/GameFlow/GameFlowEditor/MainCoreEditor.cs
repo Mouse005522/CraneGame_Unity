@@ -18,7 +18,7 @@ namespace Kun.Tool
 
             if (envirSetting == null)
             {
-                envirSetting = SettingParser.LoadJson<EnvirSetting> ();
+                envirSetting = GameSettingScopes.Root.LoadJson<EnvirSetting> ();
             }
 
 
@@ -63,7 +63,7 @@ namespace Kun.Tool
 
             if (GUI.changed)
             {
-                SettingParser.SaveJson (envirSetting);
+                GameSettingScopes.Root.SaveJson (envirSetting);
                 PlayerPrefs.SetInt (MainCore.DisplayDebugGUIKey, displayDebugGUI ? 1 : 0);
             }
         }

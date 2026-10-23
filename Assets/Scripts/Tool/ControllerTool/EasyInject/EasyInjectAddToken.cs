@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -31,7 +31,7 @@ namespace Kun.Tool
             }
             else
             {
-                LoggerRouter.Error ($"無法將類型 '{typeof (T)}' 轉換成 '{typeof (WithT)}'");
+                Debug.LogError ($"無法將類型 '{typeof (T)}' 轉換成 '{typeof (WithT)}'");
             }
             return this;
         }

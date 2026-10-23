@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Kun.Tool
 {
-    public class EasyHttp
+    public class EasyHttpListener
     {
         readonly int listenerPort;
         readonly string listenPath;
@@ -15,7 +15,7 @@ namespace Kun.Tool
         HttpListener httpListener;
         Func<HttpListenerContext, UniTask> headerHandler;
 
-        public EasyHttp (int listenerPort, string listenPath = "/")
+        public EasyHttpListener (int listenerPort, string listenPath = "/")
         {
             this.listenerPort = listenerPort;
             this.listenPath = NormalizeListenPath (listenPath);

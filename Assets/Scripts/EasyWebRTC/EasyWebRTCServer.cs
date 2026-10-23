@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Unity.WebRTC;
 using Cysharp.Threading.Tasks;
-using UnityEngine.Networking;
 
 namespace Kun.Tool
 {
@@ -19,7 +18,7 @@ namespace Kun.Tool
         private const string HttpMethodPost = "POST";
         private const string ContentTypeTextPlain = "text/plain";
 
-        private EasyHttp easyHttp;
+        private EasyHttpListener easyHttpListener;
         private RTCPeerConnection peerConnection;
         private RTCDataChannel dataChannel;
 
@@ -33,12 +32,12 @@ namespace Kun.Tool
 
         private async UniTaskVoid StartHttpServer ()
         {
-            easyHttp = new EasyHttp (Port, SDP_OFFER_PATH);
-            easyHttp.SetHeaderHandler (HandleHttpHeader);
-            easyHttp.RegisterMethodHandler (HttpMethodOptions, HandleOptionsRequest);
-            easyHttp.RegisterMethodHandler (HttpMethodPost, HandleOfferRequest);
+            easyHttpListener = new EasyHttpListener (Port, SDP_OFFER_PATH);
+            easyHttpListener.SetHeaderHandler (HandleHttpHeader);
+            easyHttpListener.RegisterMethodHandler (HttpMethodOptions, HandleOptionsRequest);
+            easyHttpListener.RegisterMethodHandler (HttpMethodPost, HandleOfferRequest);
 
-            await easyHttp.Start ();
+            await easyHttpListener.Start ();
         }
 
         private UniTask HandleHttpHeader (HttpListenerContext context)
@@ -69,8 +68,8 @@ namespace Kun.Tool
                 await context.Response.OutputStream.WriteAsync (responseBuffer, 0, responseBuffer.Length);
             }
 
-            easyHttp.Stop ();
-            easyHttp = null;
+            easyHttpListener.Stop ();
+            easyHttpListener = null;
             Debug.Log ("[Server] SDP 交握完成，HTTP 監聽器已安全關閉。");
         }
 
@@ -129,7 +128,7 @@ namespace Kun.Tool
         {
             base.Close ();
 
-            easyHttp?.Stop ();
+            easyHttpListener?.Stop ();
             dataChannel?.Close ();
             peerConnection?.Close ();
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Text;
@@ -11,7 +11,7 @@ namespace Kun.Tool
 {
     public class MainCore : MonoBehaviour
     {
-        List<EasyWebRTCBase> RTCBases = new List<EasyWebRTCBase> ();
+        List<GameBase> gameBases = new List<GameBase> ();
 
         public const string DisplayDebugGUIKey = "DisplayDebugGUI";
 
@@ -31,12 +31,24 @@ namespace Kun.Tool
 
             RunFlow ().Forget ();
         }
-
         
 
         async UniTaskVoid RunFlow ()
         {
-            var envirSetting = await SettingParser.LoadJsonAsync<EnvirSetting> ();
+            var rootServices = new ServiceCollection ();
+            rootServices.SetRoot (transform);
+            rootServices.AddService (GameSettingScopes.Root);
+
+            if (!rootServices.ServiceInject.TryGetService<SettingParser> (out var rootParser))
+            {
+                throw new InvalidOperationException ("Root scope 未註冊 SettingParser。");
+            }
+
+            var envirSetting = await rootParser.LoadJsonAsync<EnvirSetting> ();
+            if (this == null)
+            {
+                return;
+            }
 
             Debug.Log ($"EnvirSetting: {JsonUtility.ToJson (envirSetting)}");
 
@@ -51,18 +63,19 @@ namespace Kun.Tool
             if (entryType.HasFlag (EntryType.Server)) 
             {
                 Debug.Log ($"啟動 Server 模式");
-                var server = gameObject.AddComponent<EasyWebRTCServer> ();
-                server.Setup (envirSetting.serverIp, envirSetting.serverPort);
-
-                RTCBases.Add (server);
+                var server = gameObject.AddComponent<GameServer> ();
+                gameBases.Add (server);
+                await server.Setup (rootServices, envirSetting.serverIp, envirSetting.serverPort);
+                if (this == null)
+                    return;
             }
 
             if (entryType.HasFlag (EntryType.Client)) 
             {
                 Debug.Log ($"啟動 Client 模式");
-                var client = gameObject.AddComponent<EasyWebRTCClient> ();
-                client.Setup (envirSetting.serverIp, envirSetting.serverPort);
-                RTCBases.Add (client);
+                var client = gameObject.AddComponent<GameClient> ();
+                gameBases.Add (client);
+                await client.Setup (rootServices, envirSetting.serverIp, envirSetting.serverPort);
             }
         }
 
@@ -80,13 +93,13 @@ namespace Kun.Tool
 
         void OnDestroy ()
         {
-            foreach (var rtcBase in RTCBases)
+            foreach (var gameBase in gameBases)
             {
-                if (rtcBase != null)
+                if (gameBase != null)
                 {
                     try 
                     {
-                        rtcBase.Close ();
+                        gameBase.Close ();
                     }
                     catch (Exception ex)
                     {
@@ -95,6 +108,7 @@ namespace Kun.Tool
                     }
                 }
             }
+
         }
     }
 }
