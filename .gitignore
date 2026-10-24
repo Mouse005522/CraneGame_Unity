@@ -61,3 +61,10 @@ fmod_editor.log
 
 #Unit
 /Assets/Test*
+
+# Unity WebGL Burst 與 Performance Testing 建置產物
+/Data/Plugins/lib_burst_generated.*
+/Assets/Resources/PerformanceTestRunInfo.json
+/Assets/Resources/PerformanceTestRunInfo.json.meta
+/Assets/Resources/PerformanceTestRunSettings.json
+/Assets/Resources/PerformanceTestRunSettings.json.meta
