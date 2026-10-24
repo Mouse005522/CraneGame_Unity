@@ -18,18 +18,34 @@ namespace CraneGameServer.WebApi
         const string RequestLocationKey = "RoomClient.RequestLocation";
         const string RequestCallStackKey = "RoomClient.RequestCallStack";
 
+        public event Action<string> RequestPrepared;
+
+        partial void PrepareRequest (System.Net.Http.HttpClient client, System.Net.Http.HttpRequestMessage request, System.Text.StringBuilder urlBuilder)
+        {
+            RequestPrepared?.Invoke ("[RoomClient] JSON 序列化與 HTTP 請求建立完成。");
+        }
+
+        partial void PrepareRequest (System.Net.Http.HttpClient client, System.Net.Http.HttpRequestMessage request, string url)
+        {
+            RequestPrepared?.Invoke ($"[RoomClient] 即將呼叫 HttpClient.SendAsync：{request.Method} {url}");
+        }
+
         /// <summary>
         /// 保留原例外，另記錄跨 await 前的呼叫位置；不修改 NSwag 產生的 API。
         /// </summary>
         public async Task<ServerJoinRoomResponse> JoinRoomWithDiagnosticsAsync (
-            ClientJoinRoomRequest body, CancellationToken cancellationToken = default)
+            ClientJoinRoomRequest body, CancellationToken cancellationToken = default, Action<string> logProgress = null)
         {
             string requestLocation = $"POST {BaseUrl}api/Room/JoinRoom";
+            logProgress?.Invoke ("[RoomClient] 開始擷取呼叫堆疊。");
             string requestCallStack = new StackTrace (1, true).ToString ();
+            logProgress?.Invoke ("[RoomClient] 呼叫堆疊擷取完成，開始呼叫 Swagger JoinRoomAsync。");
 
             try
             {
-                return await JoinRoomAsync (body, cancellationToken).ConfigureAwait (false);
+                Task<ServerJoinRoomResponse> requestTask = JoinRoomAsync (body, cancellationToken);
+                logProgress?.Invoke ("[RoomClient] Swagger 已返回 Task，開始等待 HTTP 回應。");
+                return await requestTask.ConfigureAwait (false);
             }
             catch (OperationCanceledException)
             {

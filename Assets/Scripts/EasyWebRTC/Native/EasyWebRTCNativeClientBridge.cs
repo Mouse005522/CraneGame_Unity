@@ -34,9 +34,13 @@ namespace Kun.Tool
             }
             this.iceGatheringTimeoutSeconds = iceGatheringTimeoutSeconds;
             setup = true;
+            Debug.Log ("[WebRTC Native] 啟動 WebRTC.Update 前。", this);
             updateCoroutine = StartCoroutine (WebRTC.Update ());
+            Debug.Log ("[WebRTC Native] WebRTC.Update 已啟動。", this);
             RTCConfiguration config = EasyWebRTCUtility.GetRTCConfiguration ();
+            Debug.Log ("[WebRTC Native] 建立 PeerConnection 前。", this);
             peerConnection = new RTCPeerConnection (ref config);
+            Debug.Log ("[WebRTC Native] PeerConnection 已建立。", this);
             peerConnection.OnConnectionStateChange = state =>
             {
                 if (closed)
@@ -83,7 +87,10 @@ namespace Kun.Tool
             }
             var options = new RTCDataChannelInit { ordered = channel.Ordered,
                 maxRetransmits = channel.MaxRetransmits == -1 ? (int?)null : channel.MaxRetransmits };
-            channel.Attach (peerConnection.CreateDataChannel (channel.Name, options), error => OnError?.Invoke (error));
+            Debug.Log ($"[WebRTC Native] 建立 Channel {channel.Name} 前。", this);
+            var nativeChannel = peerConnection.CreateDataChannel (channel.Name, options);
+            Debug.Log ($"[WebRTC Native] Channel {channel.Name} 已建立。", this);
+            channel.Attach (nativeChannel, error => OnError?.Invoke (error));
             channel.SetConnectionState (ConnectionState);
         }
 
@@ -91,7 +98,9 @@ namespace Kun.Tool
         {
             EnsureReady (cancellationToken);
             offerStarted = true;
+            Debug.Log ("[WebRTC Native] 呼叫 CreateOffer 前。", this);
             var offerOp = peerConnection.CreateOffer ();
+            Debug.Log ("[WebRTC Native] CreateOffer 已返回，等待完成。", this);
             await UniTask.WaitUntil (
                 () =>
                 {
@@ -102,8 +111,11 @@ namespace Kun.Tool
             {
                 throw new InvalidOperationException ($"建立 Offer 失敗: {offerOp.Error.message}");
             }
+            Debug.Log ("[WebRTC Native] Offer 已完成。", this);
             var description = offerOp.Desc;
+            Debug.Log ("[WebRTC Native] 呼叫 SetLocalDescription 前。", this);
             var localOp = peerConnection.SetLocalDescription (ref description);
+            Debug.Log ("[WebRTC Native] SetLocalDescription 已返回，等待完成。", this);
             await UniTask.WaitUntil (
                 () =>
                 {
@@ -114,7 +126,9 @@ namespace Kun.Tool
             {
                 throw new InvalidOperationException ($"設定本地 SDP 失敗: {localOp.Error.message}");
             }
+            Debug.Log ("[WebRTC Native] 本地 SDP 已完成，等待 ICE 收集。", this);
             await WaitForIceGathering (cancellationToken);
+            Debug.Log ("[WebRTC Native] ICE 收集完成。", this);
             cancellationToken.ThrowIfCancellationRequested ();
             return peerConnection.LocalDescription.sdp;
         }
@@ -123,7 +137,9 @@ namespace Kun.Tool
         {
             EnsureReady (cancellationToken);
             var description = new RTCSessionDescription { type = RTCSdpType.Answer, sdp = sdp };
+            Debug.Log ("[WebRTC Native] 呼叫 SetRemoteDescription 前。", this);
             var remoteOp = peerConnection.SetRemoteDescription (ref description);
+            Debug.Log ("[WebRTC Native] SetRemoteDescription 已返回，等待完成。", this);
             await UniTask.WaitUntil (
                 () =>
                 {
@@ -134,6 +150,7 @@ namespace Kun.Tool
             {
                 throw new InvalidOperationException ($"設定遠端 SDP 失敗: {remoteOp.Error.message}");
             }
+            Debug.Log ("[WebRTC Native] 遠端 SDP 已完成。", this);
         }
 
         void EnsureReady (CancellationToken cancellationToken)

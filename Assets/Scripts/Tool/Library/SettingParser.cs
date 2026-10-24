@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
@@ -167,11 +167,11 @@ namespace Kun.Tool
 
             T process = null;
 
-            await UniTask.SwitchToTaskPool ();
+            //await UniTask.SwitchToTaskPool ();
 
             process = JsonUtility.FromJson<T> (allLines);
 
-            await UniTask.SwitchToMainThread ();
+            //await UniTask.SwitchToMainThread ();
 
             return process;
         }

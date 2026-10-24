@@ -1,10 +1,9 @@
 ﻿using System;
-using System.Net.Http;
 using System.Collections.Generic;
 using System.Threading;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
-using CraneGameServer.WebApi;
+using CraneGame.UnityWebApi;
 
 namespace Kun.Tool
 {
@@ -12,8 +11,7 @@ namespace Kun.Tool
     public class EasyWebRTCClient : EasyWebRTCBase
     {
         IEasyWebRTCClientBridge bridge;
-        HttpClient httpClient;
-        RoomClient roomClient;
+        UnityRoomClient roomClient;
         CancellationTokenSource connectionCancellation;
         readonly Dictionary<string, EasyWebRTCChannel> channels = new Dictionary<string, EasyWebRTCChannel> ();
         EasyWebRTCChannel defaultChannel;
@@ -94,13 +92,9 @@ namespace Kun.Tool
             base.Setup (iceGatheringTimeoutSeconds);
             try
             {
-                httpClient = new HttpClient ();
-                roomClient = new RoomClient (uri.AbsoluteUri, httpClient);
+                roomClient = new UnityRoomClient (uri.AbsoluteUri);
                 EnsureBridge ();
-                if (channels.Count == 0)
-                {
-                    BindChannel ("rudp-channel");
-                }
+
                 bridge.Setup (iceGatheringTimeoutSeconds);
                 connectionCancellation = new CancellationTokenSource ();
                 ConnectToTargetServer (connectionCancellation.Token).Forget ();
@@ -119,14 +113,14 @@ namespace Kun.Tool
                 string offer = await bridge.CreateOffer (cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested ();
                 var request = new ClientJoinRoomRequest (offer);
-                ServerJoinRoomResponse response = await roomClient.JoinRoomWithDiagnosticsAsync (request, cancellationToken);
-                await UniTask.SwitchToMainThread (cancellationToken);
+                Debug.Log ("[Client] Offer 已完成，開始 JoinRoom。", this);
+                ServerJoinRoomResponse response = await roomClient.JoinRoomAsync (request, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested ();
-                if (response == null || !response.IsSuccess || string.IsNullOrWhiteSpace (response.Answer))
+                if (response == null || !response.isSuccess || string.IsNullOrWhiteSpace (response.answer))
                 {
                     throw new InvalidOperationException ("Room API 加入房間失敗，或未回傳 Answer SDP。");
                 }
-                await bridge.SetAnswer (response.Answer, cancellationToken);
+                await bridge.SetAnswer (response.answer, cancellationToken);
                 Debug.Log ("[Client] Room API 的 Answer SDP 已套用，等待 ICE 建立連線。");
             }
             catch (OperationCanceledException) when (IsClosed)
@@ -134,11 +128,9 @@ namespace Kun.Tool
             }
             catch (Exception ex)
             {
-                await UniTask.SwitchToMainThread ();
                 if (!IsClosed)
                 {
-                    string message = RoomClient.FormatRequestException (ex);
-                    Debug.LogError (message, this);
+                    Debug.LogException (ex, this);
                     Close ();
                 }
             }
@@ -170,8 +162,6 @@ namespace Kun.Tool
             connectionCancellation?.Cancel ();
             connectionCancellation?.Dispose ();
             connectionCancellation = null;
-            httpClient?.Dispose ();
-            httpClient = null;
             roomClient = null;
             if (bridge == null)
             {

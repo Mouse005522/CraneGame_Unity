@@ -276,6 +276,17 @@ namespace Kun.Tool
 
         static void ExecuteGameBuild (EntryType targetEntryType, string buildFolder, bool isDebug)
         {
+            bool copyWebServerLauncher = false;
+            if (targetEntryType == EntryType.Client)
+            {
+                copyWebServerLauncher = EditorUtility.DisplayDialog (
+                    "Web Server 啟動器",
+                    "Client 輸出成功後，是否自動將 StartUnityWeb.cmd 與 StartUnityWeb.ps1 複製到 HTML 同一層資料夾？",
+                    "是，自動複製",
+                    "否，僅輸出遊戲"
+                );
+            }
+
             // --- 記錄原有狀態 ---
             EnvirSetting envirSetting = GameSettingScopes.Root.LoadJson<EnvirSetting> ();
             EntryType originalEntryType = envirSetting.entryType;
@@ -319,6 +330,11 @@ namespace Kun.Tool
 
                     Debug.Log ($"輸出結果：{report.summary.result}，路徑：{outputPath}");
 
+                    if (report.summary.result == BuildResult.Succeeded && copyWebServerLauncher)
+                    {
+                        CopyWebServerLauncher (outputPath);
+                    }
+
                 }
                 catch (Exception ex)
                 {
@@ -347,6 +363,31 @@ namespace Kun.Tool
         // -------------------------------------------------------
         // Helpers
         // -------------------------------------------------------
+
+        static void CopyWebServerLauncher (string outputFolder)
+        {
+            string sourceFolder = Path.Combine (Application.dataPath, "..", "Tools", "UnityWebLauncher");
+            string[] fileNames = { "StartUnityWeb.cmd", "StartUnityWeb.ps1" };
+
+            // 先確認兩個檔案都存在，避免只複製到其中一個，導致啟動失敗。
+            foreach (string fileName in fileNames)
+            {
+                string sourcePath = Path.Combine (sourceFolder, fileName);
+                if (!File.Exists (sourcePath))
+                {
+                    throw new FileNotFoundException ("找不到 Web Server 啟動器檔案。", sourcePath);
+                }
+            }
+
+            foreach (string fileName in fileNames)
+            {
+                string sourcePath = Path.Combine (sourceFolder, fileName);
+                string destinationPath = Path.Combine (outputFolder, fileName);
+                File.Copy (sourcePath, destinationPath, true);
+            }
+
+            Debug.Log ($"已複製 Web Server 啟動器到：{outputFolder}");
+        }
 
         /// <summary>
         /// 將另一端的設定資料夾與 .meta 暫時移至 Assets 外，避免打包。
@@ -422,11 +463,11 @@ namespace Kun.Tool
         }
 
         /// <summary>
-        /// 以 UTC 時間產生資料夾名稱，格式：yyyy_MM_dd_HH_mm
+        /// 以本機時間產生資料夾名稱，格式：yyyy_MM_dd_HH_mm。
         /// </summary>
         static string GetTimestampFolderName ()
         {
-            return DateTime.UtcNow.ToString ("yyyy_MM_dd_HH_mm");
+            return DateTime.Now.ToString ("yyyy_MM_dd_HH_mm");
         }
 
         /// <summary>

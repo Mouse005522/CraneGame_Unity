@@ -18,7 +18,6 @@ namespace Kun.Tool
 
         public static bool DisplayDebugGUI;
 
-        // Start is called once before the first execution of Update after the MonoBehaviour is created
         void Awake ()
         {
             // 在初始化時設定
@@ -28,6 +27,7 @@ namespace Kun.Tool
                 Debug.LogException (ex);
             };
 
+            Debug.Log ($"[MainCore] Awake，平台 = {Application.platform}", this);
             SettingDisplayDebugGUI ();
 
             RunFlow ().Forget ();
@@ -45,6 +45,7 @@ namespace Kun.Tool
                 throw new InvalidOperationException ("Root scope 未註冊 SettingParser。");
             }
 
+            Debug.Log ($"[MainCore] 開始讀取 EnvirSetting，目錄 = {rootParser.FolderPath}", this);
             var envirSetting = await rootParser.LoadJsonAsync<EnvirSetting> ();
             if (this == null)
             {
