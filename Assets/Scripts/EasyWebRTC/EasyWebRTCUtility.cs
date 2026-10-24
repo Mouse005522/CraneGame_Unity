@@ -1,3 +1,4 @@
+#if !UNITY_WEBGL || UNITY_EDITOR
 using Unity.WebRTC;
 using UnityEngine;
 
@@ -15,3 +16,5 @@ public static class EasyWebRTCUtility
         };
     }
 }
+
+#endif

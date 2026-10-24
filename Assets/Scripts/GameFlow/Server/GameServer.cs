@@ -1,5 +1,7 @@
 using System;
 using System.Text.Json;
+using System.Text;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -26,6 +28,7 @@ namespace Kun.CraneGame
             Services.AddService (setting);
 
             webRTCServer = this.gameObject.AddComponent<EasyWebRTCServer> ();
+            webRTCServer.OnChannelBound += HandleChannelBound;
             webRTCServer.Setup (setting.iceGatheringTimeoutSeconds);
 
             Microsoft.Extensions.Logging.ILogger<NamedPipesRouter> logger = UnityLoggerProvider.CreateLogger<NamedPipesRouter> ("GameServer");
@@ -59,6 +62,38 @@ namespace Kun.CraneGame
 
         INamedPipesRouter namedPipesRouter;
 
+        readonly List<Action> channelLogCleanup = new List<Action> ();
+
+        void HandleChannelBound (EasyWebRTCChannel channel)
+        {
+            Debug.Log ($"[Server] Channel {channel.Name} 已建立，狀態 = {channel.State}，PeerConnection = {channel.ConnectionState}", this);
+
+            Action<EasyWebRTCChannelState> stateChanged = state =>
+            {
+                Debug.Log ($"[Server] Channel {channel.Name} 狀態變更：{state}", this);
+            };
+            Action<EasyWebRTCConnectionState> connectionStateChanged = state =>
+            {
+                Debug.Log ($"[Server] Channel {channel.Name} PeerConnection 狀態變更：{state}", this);
+            };
+            EasyWebRTCDataReceived dataReceived = bytes =>
+            {
+                string message = Encoding.UTF8.GetString (bytes);
+                Debug.Log ($"[Server] Channel {channel.Name} 收到：{message}", this);
+            };
+
+            channel.OnStateChanged += stateChanged;
+            channel.OnConnectionStateChanged += connectionStateChanged;
+            channel.OnDataReceived += dataReceived;
+
+            channelLogCleanup.Add (() =>
+            {
+                channel.OnStateChanged -= stateChanged;
+                channel.OnConnectionStateChanged -= connectionStateChanged;
+                channel.OnDataReceived -= dataReceived;
+            });
+        }
+
         protected override void OnClose ()
         {
             if (namedPipesRouter != null)
@@ -70,9 +105,17 @@ namespace Kun.CraneGame
 
             if (webRTCServer != null)
             {
+                webRTCServer.OnChannelBound -= HandleChannelBound;
+                // 先關閉，讓已訂閱的事件記錄最後的 Closed 狀態。
                 webRTCServer.Close ();
                 Destroy (webRTCServer);
             }
+
+            foreach (var cleanup in channelLogCleanup)
+            {
+                cleanup ();
+            }
+            channelLogCleanup.Clear ();
         }
     }
 }

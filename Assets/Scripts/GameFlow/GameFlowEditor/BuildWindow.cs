@@ -220,7 +220,14 @@ namespace Kun.Tool
             }
 
             string timestampFolder = Path.Combine (baseFolder, GetTimestampFolderName ());
-            ExecuteGameBuild (targetEntryType, timestampFolder, isDebug);
+            try
+            {
+                ExecuteGameBuild (targetEntryType, timestampFolder, isDebug);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException (ex);
+            }
         }
 
         static void BuildBatch (List<EntryType> entryTypes, bool isDebug)
@@ -255,6 +262,11 @@ namespace Kun.Tool
                 }
 
                 Debug.Log ("組合輸出完成");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException (ex);
+                Debug.LogError ("組合輸出中止，請查看例外詳細資訊。");
             }
             finally
             {
@@ -301,9 +313,18 @@ namespace Kun.Tool
                     options = buildOptions,
                 };
 
-                BuildReport report = BuildPipeline.BuildPlayer (options);
+                try
+                {
+                    BuildReport report = BuildPipeline.BuildPlayer (options);
 
-                Debug.Log ($"輸出結果：{report.summary.result}，路徑：{outputPath}");
+                    Debug.Log ($"輸出結果：{report.summary.result}，路徑：{outputPath}");
+
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogException (ex);
+                    Debug.LogError ($"輸出失敗，路徑：{outputPath}");
+                }
             }
             finally
             {
