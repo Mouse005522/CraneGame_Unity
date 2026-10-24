@@ -128,8 +128,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 121732436}
-  - component: {fileID: 121732438}
-  - component: {fileID: 121732437}
+  - component: {fileID: 121732439}
   m_Layer: 0
   m_Name: '[MainCore]'
   m_TagString: Untagged
@@ -152,7 +151,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &121732437
+--- !u!114 &121732439
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -161,24 +160,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 121732435}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a4100d2c28e662941b1a65e85cc101cb, type: 3}
+  m_Script: {fileID: 11500000, guid: 88e88af7dec201043a40b937478794ab, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WebRTCClient
-  serverIp: 127.0.0.1
-  serverPort: 8080
---- !u!114 &121732438
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 121732435}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: aac92ced273a8b943bc01014e25e9b15, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WebRTCServer
-  httpPort: 8080
+  m_EditorClassIdentifier: '::'
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -496,7 +480,7 @@ Transform:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 121732436}
   - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 832575519}
-  - {fileID: 121732436}

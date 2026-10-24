@@ -1,0 +1,6 @@
+{
+    "iceGatheringTimeoutSeconds": 3.0,
+    "gameServerPipleName": "CraneGameServerPipe",
+    "apiServerPipleName": "CraneGameApiPipe",
+    "TimeoutSeconds": 5.0
+}

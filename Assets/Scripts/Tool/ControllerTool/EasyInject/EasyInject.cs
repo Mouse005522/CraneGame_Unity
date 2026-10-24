@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using UnityEngine;
 
 namespace Kun.Tool
 {
@@ -10,16 +12,16 @@ namespace Kun.Tool
     /// </summary>
     public class EasyInject
     {
-        public EasyInject () 
+        public EasyInject ()
         {
             AddService (this);
         }
 
-        public static void CopyServices (EasyInject from, EasyInject to) 
+        public static void CopyServices (EasyInject from, EasyInject to)
         {
-            foreach (var pair in from.serviceTable) 
+            foreach (var pair in from.serviceTable)
             {
-                if (pair.Key == typeof (EasyInject)) 
+                if (pair.Key == typeof (EasyInject))
                 {
                     continue;
                 }
@@ -30,7 +32,7 @@ namespace Kun.Tool
                 }
                 else
                 {
-                    LoggerRouter.Error ($"重覆註冊的Service -> {pair.Key.Name}");
+                    UnityEngine.Debug.LogError ($"重覆註冊的Service -> {pair.Key.Name}");
                 }
             }
         }
@@ -47,7 +49,7 @@ namespace Kun.Tool
         /// 並產生新的副本
         /// </summary>
         /// <returns></returns>
-        public EasyInject CreateClone () 
+        public EasyInject CreateClone ()
         {
             var copyService = new Dictionary<Type, object> (this.serviceTable);
             copyService.Remove (typeof (EasyInject));
@@ -77,7 +79,7 @@ namespace Kun.Tool
             {
                 if (pair.Value is T _t)
                 {
-                    t= _t;
+                    t = _t;
                     return true;
                 }
             }
@@ -91,15 +93,15 @@ namespace Kun.Tool
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        public List<T> GetServicesOfType<T> () 
+        public List<T> GetServicesOfType<T> ()
         {
             List<T> services = new List<T> ();
 
             foreach (var pair in serviceTable)
             {
-                if (pair.Value is T t) 
+                if (pair.Value is T t)
                 {
-                    if (services.Contains (t) == false) 
+                    if (services.Contains (t) == false)
                     {
                         services.Add (t);
                     }
@@ -149,7 +151,7 @@ namespace Kun.Tool
             requestT = new RequestT ();
             AddService (requestT);
 
-            EasyInjectAddToken<RequestT> token = new EasyInjectAddToken<RequestT>(this, requestT);
+            EasyInjectAddToken<RequestT> token = new EasyInjectAddToken<RequestT> (this, requestT);
             return token;
         }
 
@@ -202,7 +204,7 @@ namespace Kun.Tool
         /// <param name="service"></param>
         public EasyInjectAddToken<ServiceType> AddServiceByRequest<RequestT, ServiceType> (out RequestT req) where RequestT : ServiceType
         {
-            if (TryCreateRequest (out req)) 
+            if (TryCreateRequest (out req))
             {
                 AddService<ServiceType> (req);
 
@@ -229,7 +231,7 @@ namespace Kun.Tool
             return token;
         }
 
-        void AddServiceInternal (object service, Type serviceType) 
+        void AddServiceInternal (object service, Type serviceType)
         {
             if (serviceTable.ContainsKey (serviceType) == false)
             {
@@ -237,13 +239,13 @@ namespace Kun.Tool
             }
             else
             {
-                LoggerRouter.Error ($"此type已經註冊 -> {serviceType.Name}");
+                UnityEngine.Debug.LogError ($"此type已經註冊 -> {serviceType.Name}");
             }
         }
 
         Dictionary<Type, object> serviceTable = new Dictionary<Type, object> ();
 
-        public void RemoveService<T> () 
+        public void RemoveService<T> ()
         {
             serviceTable.Remove (typeof (T));
         }
@@ -257,9 +259,9 @@ namespace Kun.Tool
         {
             Type reqType = typeof (T);
 
-            if (TryCreateRequest (reqType, out object req)) 
+            if (TryCreateRequest (reqType, out object req))
             {
-                request = (T) req;
+                request = (T)req;
                 return true;
             }
             else
@@ -274,7 +276,7 @@ namespace Kun.Tool
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        public bool TryCreateRequest (Type reqType ,out object request)
+        public bool TryCreateRequest (Type reqType, out object request)
         {
             bool findCtors = false;
 
@@ -286,10 +288,10 @@ namespace Kun.Tool
             //長度0可能是struct
             //應該不會有人長度0還想DI吧
             ctorTable.RemoveAll (ctor => ctor.Count == 0);
-            if (ctorTable.Count == 0) 
+            if (ctorTable.Count == 0)
             {
                 request = default;
-                LoggerRouter.Error ($"不具有符合的建構式 -> {reqType.Name}");
+                UnityEngine.Debug.LogError ($"不具有符合的建構式 -> {reqType.Name}");
                 return false;
             }
 
@@ -297,7 +299,7 @@ namespace Kun.Tool
 
             foreach (var constructor in ctorTable)
             {
-                if (TryGetMappingPars (constructor, ref pars)) 
+                if (TryGetMappingPars (constructor, ref pars))
                 {
                     findCtors = true;
                     break;
@@ -308,14 +310,14 @@ namespace Kun.Tool
                 }
             }
 
-            if (findCtors) 
+            if (findCtors)
             {
                 request = Activator.CreateInstance (reqType, pars.ToArray ());
             }
             else
             {
                 request = default;
-                LoggerRouter.Error ($"不具有符合的建構式 -> {reqType.Name}");
+                UnityEngine.Debug.LogError ($"不具有符合的建構式 -> {reqType.Name}");
             }
 
             return findCtors;
@@ -354,7 +356,7 @@ namespace Kun.Tool
         {
             var type = typeof (T);
 
-            if (TryGetService (type, out object obj)) 
+            if (TryGetService (type, out object obj))
             {
                 t = (T)obj;
                 return true;
@@ -376,7 +378,7 @@ namespace Kun.Tool
         public bool TryGetService (Type serviceType, out object service)
         {
             //內部註冊先找
-            if (serviceTable.TryGetValue (serviceType, out service)) 
+            if (serviceTable.TryGetValue (serviceType, out service))
             {
                 return true;
             }
@@ -391,7 +393,7 @@ namespace Kun.Tool
                     }
                 }
 
-                LoggerRouter.Error ($"取得service失敗 -> {serviceType}");
+                UnityEngine.Debug.LogError ($"取得service失敗 -> {serviceType}");
 
                 return false;
             }
@@ -402,9 +404,9 @@ namespace Kun.Tool
         /// </summary>
         /// <param name="target"></param>
         /// <param name="flag"></param>
-        public void BindingService (object target) 
+        public void BindingService (object target)
         {
-            BindingService<EasyInjectAttribute> (target);
+            BindingService<EasyInjectBindingAttribute> (target);
         }
 
         /// <summary>
@@ -425,7 +427,7 @@ namespace Kun.Tool
                 }
                 else
                 {
-                    LoggerRouter.Error ($"找不到對應的service -> {target.GetType ().Name}, {setter.MemberType}");
+                    UnityEngine.Debug.LogError ($"找不到對應的service -> {target.GetType ().Name}, {setter.MemberType}");
                 }
             }
         }

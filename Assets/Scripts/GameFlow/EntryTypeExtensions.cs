@@ -1,5 +1,4 @@
 using System.IO;
-using UnityEditor;
 
 namespace Kun.Tool
 {
@@ -10,37 +9,39 @@ namespace Kun.Tool
             return entryType == EntryType.Server;
         }
 
-        public static BuildTarget GetBuildTarget (this EntryType entryType)
+        public static bool IsPcPlayerBuild (this EntryType entryType)
         {
-            return entryType.IsServerBuild ()
-                ? BuildTarget.StandaloneWindows64
-                : BuildTarget.WebGL;
+            return entryType == EntryType.Host;
         }
 
-        public static int GetBuildSubtarget (this EntryType entryType)
+        static bool IsStandaloneWindowsBuild (this EntryType entryType)
         {
-            return entryType.IsServerBuild ()
-                ? (int)StandaloneBuildSubtarget.Server
-                : 0;
+            return entryType.IsServerBuild () || entryType.IsPcPlayerBuild ();
         }
 
         public static string GetBuildProfileName (this EntryType entryType)
         {
-            return entryType.IsServerBuild ()
-                ? "PC ServerBuild"
-                : "WebBuild";
+            return entryType switch
+            {
+                EntryType.Server => "PC ServerBuild",
+                EntryType.Host => "PC PlayerBuild",
+                _ => "WebBuild",
+            };
         }
 
         public static string GetBuildOutputName (this EntryType entryType, string productName)
         {
-            return entryType.IsServerBuild ()
-                ? $"{productName}_Server_PC"
-                : $"{productName}_Client_WebGL";
+            return entryType switch
+            {
+                EntryType.Server => $"{productName}_Server_PC",
+                EntryType.Host => $"{productName}_Host_PC",
+                _ => $"{productName}_Client_WebGL",
+            };
         }
 
         public static string GetBuildLocationPath (this EntryType entryType, string buildFolder, string outputName)
         {
-            return entryType.IsServerBuild ()
+            return entryType.IsStandaloneWindowsBuild ()
                 ? Path.Combine (buildFolder, $"{outputName}.exe")
                 : Path.Combine (buildFolder, outputName);
         }

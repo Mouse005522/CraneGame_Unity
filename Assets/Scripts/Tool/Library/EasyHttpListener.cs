@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Kun.Tool
 {
-    public class EasyHttp
+    public class EasyHttpListener
     {
         readonly int listenerPort;
         readonly string listenPath;
@@ -15,7 +15,7 @@ namespace Kun.Tool
         HttpListener httpListener;
         Func<HttpListenerContext, UniTask> headerHandler;
 
-        public EasyHttp (int listenerPort, string listenPath = "/")
+        public EasyHttpListener (int listenerPort, string listenPath = "/")
         {
             this.listenerPort = listenerPort;
             this.listenPath = NormalizeListenPath (listenPath);
@@ -48,7 +48,9 @@ namespace Kun.Tool
             try
             {
                 httpListener = new HttpListener ();
-                httpListener.Prefixes.Add ($"http://*:{listenerPort}{listenPath}");
+                var prefix = $"http://*:{listenerPort}{listenPath}";
+                Debug.Log ($"[EasyHttp] 嘗試監聽: {prefix}");
+                httpListener.Prefixes.Add (prefix);
                 httpListener.Start ();
 
                 Debug.Log ($"[EasyHttp] 正在監聽: http://localhost:{listenerPort}{listenPath}");
@@ -87,7 +89,7 @@ namespace Kun.Tool
             }
             catch (Exception ex)
             {
-                Debug.LogWarning ($"[EasyHttp] HttpListener 異常: {ex.Message}");
+                Debug.LogException (ex);
             }
         }
 

@@ -1,5 +1,4 @@
-﻿using System;
-using UnityEngine;
+using System;
 
 namespace Kun.Tool 
 {
@@ -12,7 +11,11 @@ namespace Kun.Tool
 
     public enum EntryType
     {
-        Server,
-        Client
+        Server = 1,
+        Client = 2,
+        /// <summary>
+        /// 測試用二合一模式，僅用於本地測試，正式發佈時請勿使用
+        /// </summary>
+        Host = Server | Client
     }
 }

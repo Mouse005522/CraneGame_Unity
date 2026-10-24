@@ -1,132 +1,184 @@
-﻿using System.Text;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading;
 using UnityEngine;
-using UnityEngine.Networking;
-using Unity.WebRTC;
-using System;
 using Cysharp.Threading.Tasks;
+using CraneGame.UnityWebApi;
 
-public class EasyWebRTCClient : MonoBehaviour
+namespace Kun.Tool
 {
-    [SerializeField]
-    public string serverIp = "your-aws-domain-or-ip.com";
-    public int serverPort = 8080;
-
-    private RTCPeerConnection peerConnection;
-    private RTCDataChannel dataChannel;
-
-    void Start ()
+    /// <summary>管理連線流程和 Room API；平台差異交給橋接器。</summary>
+    public class EasyWebRTCClient : EasyWebRTCBase
     {
-        StartCoroutine (WebRTC.Update ());
-        ConnectToTargetServer ().Forget ();
-    }
+        IEasyWebRTCClientBridge bridge;
+        UnityRoomClient roomClient;
+        CancellationTokenSource connectionCancellation;
+        readonly Dictionary<string, EasyWebRTCChannel> channels = new Dictionary<string, EasyWebRTCChannel> ();
+        EasyWebRTCChannel defaultChannel;
+        public IReadOnlyDictionary<string, EasyWebRTCChannel> Channels => channels;
+        public event Action<EasyWebRTCConnectionState> OnConnectionStateChanged;
+        public EasyWebRTCConnectionState ConnectionState => bridge?.ConnectionState ?? (IsClosed ? EasyWebRTCConnectionState.Closed : EasyWebRTCConnectionState.New);
 
-    private async UniTaskVoid ConnectToTargetServer ()
-    {
-        RTCConfiguration config = EasyWebRTCUtility.GetRTCConfiguration ();
-
-        peerConnection = new RTCPeerConnection (ref config);
-
-        peerConnection.OnConnectionStateChange = state =>
+        public EasyWebRTCChannel BindChannel (string name, bool ordered = true, int maxRetransmits = -1)
         {
-            Debug.Log ($"[Client] PeerConnection 狀態變更: {state}");
-        };
-
-        // 建立 RUDP DataChannel
-        var channelInit = new RTCDataChannelInit ();
-        dataChannel = peerConnection.CreateDataChannel ("rudp-channel", channelInit);
-
-        dataChannel.OnOpen = () =>
-        {
-            Debug.Log ($"[Client] 🎉 RUDP 通道已成功開啟！狀態: {dataChannel.ReadyState}");
-            byte[] msg = Encoding.UTF8.GetBytes ("Hello from Client!");
-            dataChannel.Send (msg);
-        };
-
-        dataChannel.OnMessage = bytes =>
-        {
-            string reply = Encoding.UTF8.GetString (bytes);
-            Debug.Log ($"[Client 收到回應]: {reply}");
-        };
-
-        dataChannel.OnClose = () =>
-        {
-            Debug.Log ($"[Client] RUDP 通道已關閉");
-        };
-
-        // 建立 Offer
-        var offerOp = peerConnection.CreateOffer ();
-        await UniTask.WaitUntil (() => offerOp.IsDone);
-
-        if (offerOp.IsError)
-        {
-            Debug.LogError ("[Client] 建立 Offer 失敗");
-            return;
-        }
-
-        var offerDesc = offerOp.Desc;
-        var setLocalOp = peerConnection.SetLocalDescription (ref offerDesc);
-        await UniTask.WaitUntil (() => setLocalOp.IsDone);
-
-        // 等待 ICE 收集完成（因為是連 AWS 固定的 IP，本地直連通常瞬間完成）
-        float timer = 0f;
-        while (peerConnection.GatheringState != RTCIceGatheringState.Complete)
-        {
-            timer += Time.deltaTime;
-            if (timer > 3f) break;
-            await UniTask.Yield ();
-        }
-
-        offerDesc = peerConnection.LocalDescription;
-
-        // 透過 HTTP POST 將 Offer SDP 傳送給 AWS Server
-        string serverUrl = $"http://{serverIp}:{serverPort}/offer/";
-        using (UnityWebRequest www = new UnityWebRequest (serverUrl, UnityWebRequest.kHttpVerbPOST))
-        {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes (offerDesc.sdp);
-            www.uploadHandler = new UploadHandlerRaw (bodyRaw);
-            www.downloadHandler = new DownloadHandlerBuffer ();
-            www.SetRequestHeader ("Content-Type", "text/plain");
-
-            await www.SendWebRequest ();
-
-            if (www.result == UnityWebRequest.Result.Success)
+            if (IsClosed)
             {
-                string answerSdp = www.downloadHandler.text;
-                var answerDesc = new RTCSessionDescription { type = RTCSdpType.Answer, sdp = answerSdp };
-
-                var setRemoteOp = peerConnection.SetRemoteDescription (ref answerDesc);
-                await UniTask.WaitUntil (() => setRemoteOp.IsDone);
-
-                Debug.Log ("[Client] 已成功與 Server 完成交握！");
+                throw new InvalidOperationException ("Client 已關閉。");
             }
-            else
+            EnsureBridge ();
+            var channel = bridge.BindChannel (name, ordered, maxRetransmits);
+            channels.Add (name, channel);
+            channel.OnDataReceived += ReceiveData;
+            if (defaultChannel == null)
             {
-                Debug.LogError ($"[Client] 無法連線至 Server: {www.error}");
+                defaultChannel = channel;
             }
+            return channel;
         }
-    }
 
-    void Update ()
-    {
-        // 按下空白鍵發送測試 RUDP 訊息
-        if (Input.GetKeyDown (KeyCode.Space) && dataChannel != null && dataChannel.ReadyState == RTCDataChannelState.Open)
+        void NotifyConnectionState (EasyWebRTCConnectionState state)
         {
-            byte[] msg = Encoding.UTF8.GetBytes ("Space pressed from Client!");
-            unsafe
+            OnConnectionStateChanged?.Invoke (state);
+        }
+
+        void EnsureBridge ()
+        {
+            if (bridge != null)
             {
-                var span = msg.AsSpan ();
-                fixed (byte* ptr = span)
+                return;
+            }
+            var host = new GameObject ("EasyWebRTCClientBridge");
+            host.transform.SetParent (transform, false);
+            try
+            {
+                if (Application.platform == RuntimePlatform.WebGLPlayer)
                 {
-                    dataChannel.Send (ptr, span.Length);
+                    bridge = host.AddComponent<EasyWebRTCWebGLClientBridge> ();
+                }
+                else
+                {
+#if !UNITY_WEBGL || UNITY_EDITOR
+                    bridge = host.AddComponent<EasyWebRTCNativeClientBridge> ();
+#else
+                    throw new PlatformNotSupportedException ("此建置僅支援 WebGL 橋接器。");
+#endif
+                }
+                bridge.OnError += HandleBridgeError;
+                bridge.OnConnectionStateChanged += NotifyConnectionState;
+            }
+            catch
+            {
+                Destroy (host);
+                throw;
+            }
+        }
+
+        protected override bool RequiresNativeUpdate => false;
+        public override bool IsConnected => !IsClosed && bridge != null && bridge.IsConnected;
+
+        public void Setup (string ip, float iceGatheringTimeoutSeconds = 3f)
+        {
+            if (string.IsNullOrWhiteSpace (ip))
+            {
+                throw new ArgumentException ("Room API 位址不可為空。", nameof (ip));
+            }
+            string baseUrl = ip.Contains ("://") ? ip : $"http://{ip}";
+            if (!Uri.TryCreate (baseUrl, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) || string.IsNullOrEmpty (uri.Host))
+            {
+                throw new ArgumentException ("Room API 位址必須是 HTTP(S) URL。", nameof (ip));
+            }
+
+            base.Setup (iceGatheringTimeoutSeconds);
+            try
+            {
+                roomClient = new UnityRoomClient (uri.AbsoluteUri);
+                EnsureBridge ();
+
+                bridge.Setup (iceGatheringTimeoutSeconds);
+                connectionCancellation = new CancellationTokenSource ();
+                ConnectToTargetServer (connectionCancellation.Token).Forget ();
+            }
+            catch
+            {
+                Close ();
+                throw;
+            }
+        }
+
+        async UniTask ConnectToTargetServer (CancellationToken cancellationToken)
+        {
+            try
+            {
+                string offer = await bridge.CreateOffer (cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested ();
+                var request = new ClientJoinRoomRequest (offer);
+                Debug.Log ("[Client] Offer 已完成，開始 JoinRoom。", this);
+                ServerJoinRoomResponse response = await roomClient.JoinRoomAsync (request, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested ();
+                if (response == null || !response.isSuccess || string.IsNullOrWhiteSpace (response.answer))
+                {
+                    throw new InvalidOperationException ("Room API 加入房間失敗，或未回傳 Answer SDP。");
+                }
+                await bridge.SetAnswer (response.answer, cancellationToken);
+                Debug.Log ("[Client] Room API 的 Answer SDP 已套用，等待 ICE 建立連線。");
+            }
+            catch (OperationCanceledException) when (IsClosed)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (!IsClosed)
+                {
+                    Debug.LogException (ex, this);
+                    Close ();
                 }
             }
-            Debug.Log ("[Client] 已發送 RUDP 訊息");
         }
-    }
 
-    private void OnDestroy ()
-    {
-        dataChannel?.Close ();
-        peerConnection?.Close ();
+        void HandleBridgeError (Exception exception)
+        {
+            if (IsClosed)
+            {
+                return;
+            }
+            Debug.LogException (exception, this);
+            Close ();
+        }
+
+        public override bool Send (byte[] data)
+        {
+            base.Send (data);
+            return !IsClosed && defaultChannel != null && defaultChannel.Send (data);
+        }
+
+        public override void Close ()
+        {
+            if (IsClosed)
+            {
+                return;
+            }
+            base.Close ();
+            connectionCancellation?.Cancel ();
+            connectionCancellation?.Dispose ();
+            connectionCancellation = null;
+            roomClient = null;
+            if (bridge == null)
+            {
+                return;
+            }
+            foreach (var channel in channels.Values)
+            {
+                channel.OnDataReceived -= ReceiveData;
+            }
+            bridge.OnError -= HandleBridgeError;
+            bridge.Close ();
+            bridge.OnConnectionStateChanged -= NotifyConnectionState;
+            if (bridge is Component component)
+            {
+                Destroy (component.gameObject);
+            }
+            bridge = null;
+        }
     }
 }

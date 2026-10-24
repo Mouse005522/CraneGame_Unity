@@ -1,132 +1,176 @@
-﻿using System;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
 using UnityEngine;
+#if !UNITY_WEBGL || UNITY_EDITOR
 using Unity.WebRTC;
+#endif
 using Cysharp.Threading.Tasks;
-using Kun.Tool;
 
-public class EasyWebRTCServer : MonoBehaviour
+namespace Kun.Tool
 {
-    private const string HeaderAccessControlAllowOrigin = "Access-Control-Allow-Origin";
-    private const string HeaderAccessControlAllowMethods = "Access-Control-Allow-Methods";
-    private const string HeaderAccessControlAllowHeaders = "Access-Control-Allow-Headers";
-    private const string HttpMethodOptions = "OPTIONS";
-    private const string HttpMethodPost = "POST";
-    private const string ContentTypeTextPlain = "text/plain";
-
-    public int httpPort = 8080;
-
-    private EasyHttp easyHttp;
-    private RTCPeerConnection peerConnection;
-    private RTCDataChannel dataChannel;
-
-    void Start ()
+    public class EasyWebRTCServer : EasyWebRTCBase
     {
-        StartCoroutine (WebRTC.Update ());
-        StartHttpServer ().Forget ();
-    }
+        public event Action<EasyWebRTCChannel> OnChannelBound;
 
-    private async UniTaskVoid StartHttpServer ()
-    {
-        easyHttp = new EasyHttp (httpPort, "/offer/");
-        easyHttp.SetHeaderHandler (HandleHttpHeader);
-        easyHttp.RegisterMethodHandler (HttpMethodOptions, HandleOptionsRequest);
-        easyHttp.RegisterMethodHandler (HttpMethodPost, HandleOfferRequest);
-
-        await easyHttp.Start ();
-    }
-
-    private UniTask HandleHttpHeader (HttpListenerContext context)
-    {
-        context.Response.AddHeader (HeaderAccessControlAllowOrigin, "*");
-        context.Response.AddHeader (HeaderAccessControlAllowMethods, $"{HttpMethodPost}, {HttpMethodOptions}");
-        context.Response.AddHeader (HeaderAccessControlAllowHeaders, "Content-Type");
-
-        return UniTask.CompletedTask;
-    }
-
-    private UniTask HandleOptionsRequest (HttpListenerContext context)
-    {
-        context.Response.StatusCode = (int)HttpStatusCode.OK;
-        return UniTask.CompletedTask;
-    }
-
-    private async UniTask HandleOfferRequest (HttpListenerContext context)
-    {
-        using (var reader = new StreamReader (context.Request.InputStream, context.Request.ContentEncoding))
+#if UNITY_WEBGL && !UNITY_EDITOR
+        public UniTask<string> HandleOfferRequest (string offerSdp)
         {
-            string clientOfferSdp = await reader.ReadToEndAsync ();
-            string serverAnswerSdp = await HandleClientOffer (clientOfferSdp);
+            throw new PlatformNotSupportedException ("Use a native platform for EasyWebRTCServer.");
+        }
+#else
+        RTCPeerConnection peerConnection;
+        readonly Dictionary<string, EasyWebRTCNativeChannel> channels = new Dictionary<string, EasyWebRTCNativeChannel> ();
+        EasyWebRTCNativeChannel defaultChannel;
+        public IReadOnlyDictionary<string, EasyWebRTCNativeChannel> Channels => channels;
+        public event Action<EasyWebRTCConnectionState> OnConnectionStateChanged;
+        public EasyWebRTCConnectionState ConnectionState { get; private set; }
 
-            byte[] responseBuffer = Encoding.UTF8.GetBytes (serverAnswerSdp);
-            context.Response.ContentType = ContentTypeTextPlain;
-            context.Response.ContentLength64 = responseBuffer.Length;
-            await context.Response.OutputStream.WriteAsync (responseBuffer, 0, responseBuffer.Length);
+        public override bool IsConnected => !IsClosed && ConnectionState == EasyWebRTCConnectionState.Connected;
+
+        public override bool Send (byte[] data)
+        {
+            base.Send (data);
+            return !IsClosed && defaultChannel != null && defaultChannel.Send (data);
         }
 
-        easyHttp.Stop ();
-        easyHttp = null;
-        Debug.Log ("[Server] SDP 交握完成，HTTP 監聽器已安全關閉。");
-    }
 
-    private async Task<string> HandleClientOffer (string offerSdp)
-    {
-        RTCConfiguration config = EasyWebRTCUtility.GetRTCConfiguration ();
-        peerConnection = new RTCPeerConnection (ref config);
-
-        // 當 Client 建立 DataChannel 時觸發
-        peerConnection.OnDataChannel = channel =>
+        /// <summary>
+        /// 處理外部傳入的 Offer SDP 並回傳 Answer SDP；不負責 HTTP 傳輸。
+        /// 請於 Setup 後，在 Unity 主執行緒呼叫。
+        /// </summary>
+        public async UniTask<string> HandleOfferRequest (string offerSdp)
         {
-            Debug.Log ("[Server] 收到 Client 的 RUDP 資料通道連線請求...");
-
-            dataChannel = channel;
-            dataChannel.OnOpen = () =>
+            if (string.IsNullOrWhiteSpace (offerSdp))
             {
-                Debug.Log ("[Server] 🎉 RUDP 資料通道已成功開啟！");
-            };
-            dataChannel.OnMessage = bytes =>
+                throw new ArgumentException ("Offer SDP 不可為空。", nameof (offerSdp));
+            }
+            if (IsClosed || IceGatheringTimeoutSeconds <= 0f)
             {
-                string msg = Encoding.UTF8.GetString (bytes);
-                Debug.Log ($"[Server 收到 RUDP 訊息]: {msg}");
+                throw new InvalidOperationException ("請先初始化 WebRTC，且不可在關閉後處理 Offer。");
+            }
+            if (peerConnection != null)
+            {
+                throw new InvalidOperationException ("目前已有 PeerConnection，無法重複處理 Offer。");
+            }
 
-                byte[] reply = Encoding.UTF8.GetBytes ($"Server 已收到: {msg}");
-                dataChannel.Send (reply);
-            };
-        };
+            try
+            {
+                RTCConfiguration config = EasyWebRTCUtility.GetRTCConfiguration ();
+                peerConnection = new RTCPeerConnection (ref config);
+                peerConnection.OnConnectionStateChange = state =>
+                {
+                    if (IsClosed)
+                    {
+                        return;
+                    }
+                    ConnectionState = EasyWebRTCNativeChannel.Map (state);
+                    foreach (var channel in channels.Values)
+                    {
+                        channel.SetConnectionState (ConnectionState);
+                    }
+                    OnConnectionStateChanged?.Invoke (ConnectionState);
+                };
+                peerConnection.OnDataChannel = native =>
+                {
+                    if (IsClosed)
+                    {
+                        native.Close ();
+                        native.Dispose ();
+                        return;
+                    }
+                    if (channels.ContainsKey (native.Label))
+                    {
+                        native.Close ();
+                        native.Dispose ();
+                        return;
+                    }
+                    // The native getter uses ushort.MaxValue for reliable channels.
+                    int retries = native.MaxRetransmits == ushort.MaxValue ? -1 : native.MaxRetransmits;
+                    var channel = new EasyWebRTCNativeChannel (native.Label, native.Ordered, retries);
+                    channels.Add (channel.Name, channel);
+                    channel.OnDataReceived += ReceiveData;
+                    channel.Attach (native);
+                    channel.SetConnectionState (ConnectionState);
+                    if (defaultChannel == null)
+                    {
+                        defaultChannel = channel;
+                    }
+                    OnChannelBound?.Invoke (channel);
+                };
 
-        var offerDesc = new RTCSessionDescription { type = RTCSdpType.Offer, sdp = offerSdp };
+                var offerDesc = new RTCSessionDescription { type = RTCSdpType.Offer, sdp = offerSdp };
+                var setRemoteOp = peerConnection.SetRemoteDescription (ref offerDesc);
+                await UniTask.WaitUntil (
+                    () =>
+                    {
+                        return setRemoteOp.IsDone;
+                    });
+                if (setRemoteOp.IsError)
+                {
+                    throw new InvalidOperationException ($"設定遠端 SDP 失敗: {setRemoteOp.Error.message}");
+                }
 
-        var setRemoteOp = peerConnection.SetRemoteDescription (ref offerDesc);
-        while (!setRemoteOp.IsDone) await Task.Delay (10);
+                var answerOp = peerConnection.CreateAnswer ();
+                await UniTask.WaitUntil (
+                    () =>
+                    {
+                        return answerOp.IsDone;
+                    });
+                if (answerOp.IsError)
+                {
+                    throw new InvalidOperationException ($"建立 Answer 失敗: {answerOp.Error.message}");
+                }
 
-        var answerOp = peerConnection.CreateAnswer ();
-        while (!answerOp.IsDone) await Task.Delay (10);
-        var answerDesc = answerOp.Desc;
+                var answerDesc = answerOp.Desc;
+                var setLocalOp = peerConnection.SetLocalDescription (ref answerDesc);
+                await UniTask.WaitUntil (
+                    () =>
+                    {
+                        return setLocalOp.IsDone;
+                    });
+                if (setLocalOp.IsError)
+                {
+                    throw new InvalidOperationException ($"設定本地 SDP 失敗: {setLocalOp.Error.message}");
+                }
 
-        var setLocalOp = peerConnection.SetLocalDescription (ref answerDesc);
-        while (!setLocalOp.IsDone) await Task.Delay (10);
-
-        // 等待 ICE 收集
-        float timer = 0f;
-        while (peerConnection.GatheringState != RTCIceGatheringState.Complete)
-        {
-            timer += 0.1f;
-            if (timer > 3f) break;
-            await Task.Delay (100);
+                await WaitForIceGathering (peerConnection);
+                Debug.Log ("[Server] WebRTC Answer 準備就緒，回傳給呼叫端");
+                return peerConnection.LocalDescription.sdp;
+            }
+            catch
+            {
+                ClosePeerConnection ();
+                throw;
+            }
         }
 
-        answerDesc = peerConnection.LocalDescription;
-        Debug.Log ("[Server] WebRTC Answer 準備就緒，回傳給 Client");
-        return answerDesc.sdp;
-    }
+        void ClosePeerConnection ()
+        {
+            ConnectionState = EasyWebRTCConnectionState.Closed;
+            foreach (var channel in channels.Values)
+            {
+                channel.OnDataReceived -= ReceiveData;
+                channel.SetConnectionState (ConnectionState);
+                channel.Close ();
+            }
+            channels.Clear ();
+            defaultChannel = null;
+            OnConnectionStateChanged?.Invoke (ConnectionState);
+            peerConnection?.Close ();
+            peerConnection?.Dispose ();
+            peerConnection = null;
+        }
 
-    private void OnDestroy ()
-    {
-        easyHttp?.Stop ();
-        dataChannel?.Close ();
-        peerConnection?.Close ();
+        public override void Close ()
+        {
+            if (IsClosed)
+            {
+                return;
+            }
+
+            base.Close ();
+            ClosePeerConnection ();
+        }
+#endif
     }
 }

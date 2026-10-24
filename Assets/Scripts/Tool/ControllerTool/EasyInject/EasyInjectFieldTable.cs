@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnityEngine;
 
 namespace Kun.Tool
 {
@@ -107,7 +108,7 @@ namespace Kun.Tool
             }
             catch (Exception e) 
             {
-                LoggerRouter.Exception (e);
+                Debug.LogException (e);
             }
         }
 
