@@ -1,4 +1,5 @@
 {
     "roomServerIp": "https://localhost:7019",
-    "iceGatheringTimeoutSeconds": 3.0
+    "iceGatheringTimeoutSeconds": 3.0,
+    "initPollingIntervalSeconds": 1.0
 }
